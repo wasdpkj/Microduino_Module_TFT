@@ -1,22 +1,9 @@
 /*!
 * @file Adafruit_TFT.h
 * 
-* This is the documentation for Adafruit's ST7789 driver for the
+* This is the documentation for ST7735/ST7789 driver for the
 * Arduino platform. 
 *
-* This library works with the Adafruit 2.8" Touch Shield V2 (SPI)
-*    http://www.adafruit.com/products/1651
-* Adafruit 2.4" TFT LCD with Touchscreen Breakout w/MicroSD Socket - ST7789
-*    https://www.adafruit.com/product/2478
-* 2.8" TFT LCD with Touchscreen Breakout Board w/MicroSD Socket - ST7789
-*    https://www.adafruit.com/product/1770
-* 2.2" 18-bit color TFT LCD display with microSD card breakout - ILI9340
-*    https://www.adafruit.com/product/1770
-* TFT FeatherWing - 2.4" 320x240 Touchscreen For All Feathers 
-*    https://www.adafruit.com/product/3315
-*
-* These displays use SPI to communicate, 4 or 5 pins are required
-* to interface (RST is optional).
 *
 * Adafruit invests time and resources providing this open source code,
 * please support Adafruit and open-source hardware by purchasing
@@ -53,20 +40,20 @@ typedef volatile uint32 RwReg;
 typedef volatile uint32_t RwReg;
 #endif
 
-#define ST7735 	1
-#define ST7789 	2
-#define ILI9341 3
-
-// for 1.8
+//**ST7735**
 #define ST7735_TFTWIDTH	  128
 #define ST7735_TFTHEIGHT  160
 
+#define ST7735_128x160_XSTART 0
+#define ST7735_128x160_YSTART 0
 
+//**ST7789**
 #define ST7789_240x240_XSTART 0
 #define ST7789_240x240_YSTART 80
 
 #define ST7789_TFTWIDTH   240       ///< ST7789 max TFT width
 #define ST7789_TFTHEIGHT  240       ///< ST7789 max TFT height
+
 
 #define ST_CMD_DELAY 0x80 // special signifier for command lists
 
@@ -78,45 +65,55 @@ typedef volatile uint32_t RwReg;
 #define MADCTL_BGR 0x08     ///< Blue-Green-Red pixel order
 #define MADCTL_MH  0x04     ///< LCD refresh right to left
 
-#define ST7789_NOP        0x00      ///< No-op register
-#define ST7789_SWRESET    0x01      ///< Software reset register
-#define ST7789_RDDID      0x04      ///< Read display identification information
-#define ST7789_RDDST      0x09      ///< Read Display Status 
 
-#define ST7789_SLPIN      0x10      ///< Enter Sleep Mode
-#define ST7789_SLPOUT     0x11      ///< Sleep Out
-#define ST7789_PTLON      0x12      ///< Partial Mode ON
-#define ST7789_NORON      0x13      ///< Normal Display Mode ON
+#define TFT_NOP   	   	  0x00      ///< No-op register
+#define TFT_SWRESET    	  0x01      ///< Software reset register
+#define TFT_RDDID      	  0x04      ///< Read display identification information
+#define TFT_RDDST      	  0x09      ///< Read Display Status 
+#define TFT_SLPIN      	  0x10      ///< Enter Sleep Mode
+#define TFT_SLPOUT     	  0x11      ///< Sleep Out
+#define TFT_PTLON      	  0x12      ///< Partial Mode ON
+#define TFT_NORON      	  0x13      ///< Normal Display Mode ON
+#define TFT_INVOFF     	  0x20      ///< Display Inversion OFF
+#define TFT_INVON      	  0x21      ///< Display Inversion ON 
+#define TFT_GAMMASET   	  0x26      ///< Gamma Set 
+#define TFT_DISPOFF    	  0x28      ///< Display OFF 
+#define TFT_DISPON     	  0x29      ///< Display ON
+#define TFT_CASET      	  0x2A      ///< Column Address Set 
+#define TFT_RASET      	  0x2B      ///< Page Address Set
+#define TFT_RAMWR      	  0x2C      ///< Memory Write
+#define TFT_RAMRD      	  0x2E      ///< Memory Read
+#define TFT_PTLAR      	  0x30      ///< Partial Area
+#define TFT_MADCTL     	  0x36      ///< Memory Access Control
+#define TFT_VSCRSADD  	  0x37      ///< Vertical Scrolling Start Address
+#define TFT_COLMOD     	  0x3A      ///< COLMOD: Pixel Format Set
+#define TFT_RDID1      	  0xDA      ///< Read ID 1
+#define TFT_RDID2      	  0xDB      ///< Read ID 2
+#define TFT_RDID3      	  0xDC      ///< Read ID 3
+#define TFT_GMCTRP1    	  0xE0      ///< Positive Gamma Correction
+#define TFT_GMCTRN1    	  0xE1      ///< Negative Gamma Correction
 
-#define ST7789_RDMODE     0x0A      ///< Read Display Power Mode 
-#define ST7789_RDMADCTL   0x0B      ///< Read Display MADCTL
-#define ST7789_RDPIXFMT   0x0C      ///< Read Display Pixel Format
-#define ST7789_RDIMGFMT   0x0D      ///< Read Display Image Format 
-#define ST7789_RDSELFDIAG 0x0F      ///< Read Display Self-Diagnostic Result
+//**ST7735**
+#define ST7735_FRMCTR1 	  0xB1
+#define ST7735_FRMCTR2 	  0xB2
+#define ST7735_FRMCTR3 	  0xB3
+#define ST7735_INVCTR  	  0xB4
+#define ST7735_DISSET5 	  0xB6
+#define ST7735_PWCTR1  	  0xC0
+#define ST7735_PWCTR2  	  0xC1
+#define ST7735_PWCTR3  	  0xC2
+#define ST7735_PWCTR4  	  0xC3
+#define ST7735_PWCTR5  	  0xC4
+#define ST7735_VMCTR1  	  0xC5
+#define ST7735_RDID4   	  0xDD
+#define ST7735_PWCTR6  	  0xFC
 
-#define ST7789_INVOFF     0x20      ///< Display Inversion OFF
-#define ST7789_INVON      0x21      ///< Display Inversion ON 
-#define ST7789_GAMMASET   0x26      ///< Gamma Set 
-#define ST7789_DISPOFF    0x28      ///< Display OFF 
-#define ST7789_DISPON     0x29      ///< Display ON
-
-#define ST7789_CASET      0x2A      ///< Column Address Set 
-#define ST7789_RASET      0x2B      ///< Page Address Set
-#define ST7789_RAMWR      0x2C      ///< Memory Write
-#define ST7789_RAMRD      0x2E      ///< Memory Read
-
-#define ST7789_PTLAR      0x30      ///< Partial Area
-#define ST7789_MADCTL     0x36      ///< Memory Access Control
-#define ST7789_VSCRSADD   0x37      ///< Vertical Scrolling Start Address
-#define ST7789_COLMOD     0x3A      ///< COLMOD: Pixel Format Set
-
+//**ST7789**
 #define ST7789_RGBCTL     0xB1      ///< RGB Interface Control
 #define ST7789_PORCTL     0xB2      ///< Porch Setting
 #define ST7789_FRMCTR1    0xB3      ///< Frame Rate Control (In Partial Mode/Idle Mode)
 #define ST7789_FRMCTR2    0xC6      ///< Frame Rate Control (In Normal Mode)
-
 #define ST7789_GCCTL      0xB7      ///< Gate Control
-
 #define ST7789_PWCTR1     0xD0      ///< Power Control 1
 #define ST7789_PWCTR2     0xE8      ///< Power Control 2
 #define ST7789_VDVVRHEN   0xC2      ///< VDV and VRH Command Enable
@@ -124,13 +121,11 @@ typedef volatile uint32_t RwReg;
 #define ST7789_VDVSET     0xC4      ///< VDV set
 #define ST7789_VCMOFSET   0xC5      ///< VCOM Offset
 #define ST7789_VCMOSET    0xBB      ///< VCOM Setting
-
-#define ST7789_RDID1      0xDA      ///< Read ID 1
-#define ST7789_RDID2      0xDB      ///< Read ID 2
-#define ST7789_RDID3      0xDC      ///< Read ID 3
-
-#define ST7789_GMCTRP1    0xE0      ///< Positive Gamma Correction
-#define ST7789_GMCTRN1    0xE1      ///< Negative Gamma Correction
+#define ST7789_RDMODE     0x0A      ///< Read Display Power Mode 
+#define ST7789_RDMADCTL   0x0B      ///< Read Display MADCTL
+#define ST7789_RDPIXFMT   0x0C      ///< Read Display Pixel Format
+#define ST7789_RDIMGFMT   0x0D      ///< Read Display Image Format 
+#define ST7789_RDSELFDIAG 0x0F      ///< Read Display Self-Diagnostic Result
 
 
 // Color definitions
@@ -155,82 +150,48 @@ typedef volatile uint32_t RwReg;
 #define TFT_PINK        0xFC18      ///< 255, 128, 192
 
 // Color definitions
-#define ST7789_BLACK       0x0000      ///<   0,   0,   0
-#define ST7789_NAVY        0x000F      ///<   0,   0, 128
-#define ST7789_DARKGREEN   0x03E0      ///<   0, 128,   0
-#define ST7789_DARKCYAN    0x03EF      ///<   0, 128, 128
-#define ST7789_MAROON      0x7800      ///< 128,   0,   0
-#define ST7789_PURPLE      0x780F      ///< 128,   0, 128
-#define ST7789_OLIVE       0x7BE0      ///< 128, 128,   0
-#define ST7789_LIGHTGREY   0xC618      ///< 192, 192, 192
-#define ST7789_DARKGREY    0x7BEF      ///< 128, 128, 128
-#define ST7789_BLUE        0x001F      ///<   0,   0, 255
-#define ST7789_GREEN       0x07E0      ///<   0, 255,   0
-#define ST7789_CYAN        0x07FF      ///<   0, 255, 255
-#define ST7789_RED         0xF800      ///< 255,   0,   0
-#define ST7789_MAGENTA     0xF81F      ///< 255,   0, 255
-#define ST7789_YELLOW      0xFFE0      ///< 255, 255,   0
-#define ST7789_WHITE       0xFFFF      ///< 255, 255, 255
-#define ST7789_ORANGE      0xFD20      ///< 255, 165,   0
-#define ST7789_GREENYELLOW 0xAFE5      ///< 173, 255,  47
-#define ST7789_PINK        0xFC18      ///< 255, 128, 192
+#define ST7789_BLACK       TFT_BLACK            ///<   0,   0,   0
+#define ST7789_NAVY        TFT_NAVY             ///<   0,   0, 128
+#define ST7789_DARKGREEN   TFT_DARKGREEN        ///<   0, 128,   0
+#define ST7789_DARKCYAN    TFT_DARKCYAN         ///<   0, 128, 128
+#define ST7789_MAROON      TFT_MAROON           ///< 128,   0,   0
+#define ST7789_PURPLE      TFT_PURPLE           ///< 128,   0, 128
+#define ST7789_OLIVE       TFT_OLIVE            ///< 128, 128,   0
+#define ST7789_LIGHTGREY   TFT_LIGHTGREY        ///< 192, 192, 192
+#define ST7789_DARKGREY    TFT_DARKGREY         ///< 128, 128, 128
+#define ST7789_BLUE        TFT_BLUE             ///<   0,   0, 255
+#define ST7789_GREEN       TFT_GREEN            ///<   0, 255,   0
+#define ST7789_CYAN        TFT_CYAN             ///<   0, 255, 255
+#define ST7789_RED         TFT_RED              ///< 255,   0,   0
+#define ST7789_MAGENTA     TFT_MAGENTA          ///< 255,   0, 255
+#define ST7789_YELLOW      TFT_YELLOW           ///< 255, 255,   0
+#define ST7789_WHITE       TFT_WHITE            ///< 255, 255, 255
+#define ST7789_ORANGE      TFT_ORANGE           ///< 255, 165,   0
+#define ST7789_GREENYELLOW TFT_GREENYELLOW      ///< 173, 255,  47
+#define ST7789_PINK        TFT_PINK             ///< 255, 128, 192
 
 
 // Color definitions
-#define	ST7735_BLACK   0x0000
-#define	ST7735_BLUE    0x001F
-#define	ST7735_RED     0xF800
-#define	ST7735_GREEN   0x07E0
-#define ST7735_CYAN    0x07FF
-#define ST7735_MAGENTA 0xF81F
-#define ST7735_YELLOW  0xFFE0
-#define ST7735_WHITE   0xFFFF
+#define ST7735_BLACK       TFT_BLACK            ///<   0,   0,   0
+#define ST7735_NAVY        TFT_NAVY             ///<   0,   0, 128
+#define ST7735_DARKGREEN   TFT_DARKGREEN        ///<   0, 128,   0
+#define ST7735_DARKCYAN    TFT_DARKCYAN         ///<   0, 128, 128
+#define ST7735_MAROON      TFT_MAROON           ///< 128,   0,   0
+#define ST7735_PURPLE      TFT_PURPLE           ///< 128,   0, 128
+#define ST7735_OLIVE       TFT_OLIVE            ///< 128, 128,   0
+#define ST7735_LIGHTGREY   TFT_LIGHTGREY        ///< 192, 192, 192
+#define ST7735_DARKGREY    TFT_DARKGREY         ///< 128, 128, 128
+#define ST7735_BLUE        TFT_BLUE             ///<   0,   0, 255
+#define ST7735_GREEN       TFT_GREEN            ///<   0, 255,   0
+#define ST7735_CYAN        TFT_CYAN             ///<   0, 255, 255
+#define ST7735_RED         TFT_RED              ///< 255,   0,   0
+#define ST7735_MAGENTA     TFT_MAGENTA          ///< 255,   0, 255
+#define ST7735_YELLOW      TFT_YELLOW           ///< 255, 255,   0
+#define ST7735_WHITE       TFT_WHITE            ///< 255, 255, 255
+#define ST7735_ORANGE      TFT_ORANGE           ///< 255, 165,   0
+#define ST7735_GREENYELLOW TFT_GREENYELLOW      ///< 173, 255,  47
+#define ST7735_PINK        TFT_PINK             ///< 255, 128, 192
 
-#define ST7735_NOP     0x00
-#define ST7735_SWRESET 0x01
-#define ST7735_RDDID   0x04
-#define ST7735_RDDST   0x09
-
-#define ST7735_SLPIN   0x10
-#define ST7735_SLPOUT  0x11
-#define ST7735_PTLON   0x12
-#define ST7735_NORON   0x13
-
-#define ST7735_INVOFF  0x20
-#define ST7735_INVON   0x21
-#define ST7735_DISPOFF 0x28
-#define ST7735_DISPON  0x29
-#define ST7735_CASET   0x2A
-#define ST7735_RASET   0x2B
-#define ST7735_RAMWR   0x2C
-#define ST7735_RAMRD   0x2E
-
-#define ST7735_PTLAR   0x30
-#define ST7735_COLMOD  0x3A
-#define ST7735_MADCTL  0x36
-
-#define ST7735_FRMCTR1 0xB1
-#define ST7735_FRMCTR2 0xB2
-#define ST7735_FRMCTR3 0xB3
-#define ST7735_INVCTR  0xB4
-#define ST7735_DISSET5 0xB6
-
-#define ST7735_PWCTR1  0xC0
-#define ST7735_PWCTR2  0xC1
-#define ST7735_PWCTR3  0xC2
-#define ST7735_PWCTR4  0xC3
-#define ST7735_PWCTR5  0xC4
-#define ST7735_VMCTR1  0xC5
-
-#define ST7735_RDID1   0xDA
-#define ST7735_RDID2   0xDB
-#define ST7735_RDID3   0xDC
-#define ST7735_RDID4   0xDD
-
-#define ST7735_PWCTR6  0xFC
-
-#define ST7735_GMCTRP1 0xE0
-#define ST7735_GMCTRN1 0xE1
 
 #if defined (ARDUINO_STM32_FEATHER) || defined (ARDUINO_MAXIM)    // doesnt work on wiced feather
   #undef USE_FAST_PINIO
@@ -249,8 +210,10 @@ class Adafruit_TFT : public Adafruit_GFX {
 
 #ifndef ESP32
         void      begin(uint32_t freq = 0);
+		void	  spiInit(uint32_t freq = 0);
 #else
         void      begin(uint32_t freq = 0, SPIClass &spi = SPI);
+		void	  spiInit(uint32_t freq = 0, SPIClass &spi = SPI);
 #endif
 		void 	  displayInit(const uint8_t *addr);
 		void      softReset();
@@ -337,7 +300,7 @@ class Adafruit_ST7789 : public Adafruit_TFT {
 };
 
 // Subclass of TFT type display for ST7735 TFT Driver
-class Adafruit_ST7735 : public Adafruit_TFT {
+class Adafruit_ST7735 : public Adafruit_TFT{
   public:
     Adafruit_ST7735(int8_t _CS, int8_t _DC, int8_t _MOSI, int8_t _SCLK, int8_t _RST = -1, int8_t _MISO = -1);
     Adafruit_ST7735(int8_t _CS, int8_t _DC, int8_t _RST = -1);
