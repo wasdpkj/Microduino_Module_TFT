@@ -1,5 +1,5 @@
 /*!
-* @file Adafruit_ST7789.h
+* @file Adafruit_TFT.h
 * 
 * This is the documentation for Adafruit's ST7789 driver for the
 * Arduino platform. 
@@ -44,6 +44,7 @@
 #endif
 #include <SPI.h>
 #include "Adafruit_GFX.h"
+#include "Adafruit_SPITFT_Macros.h"
 
 #if defined(ARDUINO_STM32_FEATHER)
 typedef volatile uint32 RwReg;
@@ -52,28 +53,14 @@ typedef volatile uint32 RwReg;
 typedef volatile uint32_t RwReg;
 #endif
 
-#define LCD_MAC 0x36
-#define ORIENTATION_PORTRAIT 0x48
-#define ORIENTATION_LANDSCAPE 0x28
-#define ORIENTATION_PORTRAIT_MIRROR 0x88
-#define ORIENTATION_LANDSCAPE_MIRROR 0xE8
+#define ST7735 	1
+#define ST7789 	2
+#define ILI9341 3
 
-/* 0x0A mirr
-0x1A mirr
-0x2A ok
-0x3A 
-0x4A 
-0x5A ok
-0x6A mirr
-0x7A mirr
-0x8A ok
-0x9A ok
-0xA 
-0xB 
-0xC 
-0xD 
-0xE 
-0xF  */
+// for 1.8
+#define ST7735_TFTWIDTH	  128
+#define ST7735_TFTHEIGHT  160
+
 
 #define ST7789_240x240_XSTART 0
 #define ST7789_240x240_YSTART 80
@@ -82,6 +69,14 @@ typedef volatile uint32_t RwReg;
 #define ST7789_TFTHEIGHT  240       ///< ST7789 max TFT height
 
 #define ST_CMD_DELAY 0x80 // special signifier for command lists
+
+#define MADCTL_MY  0x80     ///< Right to left
+#define MADCTL_MX  0x40     ///< Bottom to top
+#define MADCTL_MV  0x20     ///< Reverse Mode
+#define MADCTL_ML  0x10     ///< LCD refresh Bottom to top
+#define MADCTL_RGB 0x00     ///< Red-Green-Blue pixel order
+#define MADCTL_BGR 0x08     ///< Blue-Green-Red pixel order
+#define MADCTL_MH  0x04     ///< LCD refresh right to left
 
 #define ST7789_NOP        0x00      ///< No-op register
 #define ST7789_SWRESET    0x01      ///< Software reset register
@@ -139,6 +134,27 @@ typedef volatile uint32_t RwReg;
 
 
 // Color definitions
+#define TFT_BLACK       0x0000      ///<   0,   0,   0
+#define TFT_NAVY        0x000F      ///<   0,   0, 128
+#define TFT_DARKGREEN   0x03E0      ///<   0, 128,   0
+#define TFT_DARKCYAN    0x03EF      ///<   0, 128, 128
+#define TFT_MAROON      0x7800      ///< 128,   0,   0
+#define TFT_PURPLE      0x780F      ///< 128,   0, 128
+#define TFT_OLIVE       0x7BE0      ///< 128, 128,   0
+#define TFT_LIGHTGREY   0xC618      ///< 192, 192, 192
+#define TFT_DARKGREY    0x7BEF      ///< 128, 128, 128
+#define TFT_BLUE        0x001F      ///<   0,   0, 255
+#define TFT_GREEN       0x07E0      ///<   0, 255,   0
+#define TFT_CYAN        0x07FF      ///<   0, 255, 255
+#define TFT_RED         0xF800      ///< 255,   0,   0
+#define TFT_MAGENTA     0xF81F      ///< 255,   0, 255
+#define TFT_YELLOW      0xFFE0      ///< 255, 255,   0
+#define TFT_WHITE       0xFFFF      ///< 255, 255, 255
+#define TFT_ORANGE      0xFD20      ///< 255, 165,   0
+#define TFT_GREENYELLOW 0xAFE5      ///< 173, 255,  47
+#define TFT_PINK        0xFC18      ///< 255, 128, 192
+
+// Color definitions
 #define ST7789_BLACK       0x0000      ///<   0,   0,   0
 #define ST7789_NAVY        0x000F      ///<   0,   0, 128
 #define ST7789_DARKGREEN   0x03E0      ///<   0, 128,   0
@@ -159,6 +175,63 @@ typedef volatile uint32_t RwReg;
 #define ST7789_GREENYELLOW 0xAFE5      ///< 173, 255,  47
 #define ST7789_PINK        0xFC18      ///< 255, 128, 192
 
+
+// Color definitions
+#define	ST7735_BLACK   0x0000
+#define	ST7735_BLUE    0x001F
+#define	ST7735_RED     0xF800
+#define	ST7735_GREEN   0x07E0
+#define ST7735_CYAN    0x07FF
+#define ST7735_MAGENTA 0xF81F
+#define ST7735_YELLOW  0xFFE0
+#define ST7735_WHITE   0xFFFF
+
+#define ST7735_NOP     0x00
+#define ST7735_SWRESET 0x01
+#define ST7735_RDDID   0x04
+#define ST7735_RDDST   0x09
+
+#define ST7735_SLPIN   0x10
+#define ST7735_SLPOUT  0x11
+#define ST7735_PTLON   0x12
+#define ST7735_NORON   0x13
+
+#define ST7735_INVOFF  0x20
+#define ST7735_INVON   0x21
+#define ST7735_DISPOFF 0x28
+#define ST7735_DISPON  0x29
+#define ST7735_CASET   0x2A
+#define ST7735_RASET   0x2B
+#define ST7735_RAMWR   0x2C
+#define ST7735_RAMRD   0x2E
+
+#define ST7735_PTLAR   0x30
+#define ST7735_COLMOD  0x3A
+#define ST7735_MADCTL  0x36
+
+#define ST7735_FRMCTR1 0xB1
+#define ST7735_FRMCTR2 0xB2
+#define ST7735_FRMCTR3 0xB3
+#define ST7735_INVCTR  0xB4
+#define ST7735_DISSET5 0xB6
+
+#define ST7735_PWCTR1  0xC0
+#define ST7735_PWCTR2  0xC1
+#define ST7735_PWCTR3  0xC2
+#define ST7735_PWCTR4  0xC3
+#define ST7735_PWCTR5  0xC4
+#define ST7735_VMCTR1  0xC5
+
+#define ST7735_RDID1   0xDA
+#define ST7735_RDID2   0xDB
+#define ST7735_RDID3   0xDC
+#define ST7735_RDID4   0xDD
+
+#define ST7735_PWCTR6  0xFC
+
+#define ST7735_GMCTRP1 0xE0
+#define ST7735_GMCTRN1 0xE1
+
 #if defined (ARDUINO_STM32_FEATHER) || defined (ARDUINO_MAXIM)    // doesnt work on wiced feather
   #undef USE_FAST_PINIO
 #elif defined (__AVR__) || defined(TEENSYDUINO) || defined(ESP8266) || defined (ESP32) || defined(__arm__)
@@ -167,19 +240,19 @@ typedef volatile uint32_t RwReg;
 
 
 /// Class to manage hardware interface with ST7789 chipset (also seems to work with ILI9340)
-class Adafruit_ST7789 : public Adafruit_GFX {
+class Adafruit_TFT : public Adafruit_GFX {
     protected:
 
     public:
-        Adafruit_ST7789(int8_t _CS, int8_t _DC, int8_t _MOSI, int8_t _SCLK, int8_t _RST = -1, int8_t _MISO = -1);
-        Adafruit_ST7789(int8_t _CS, int8_t _DC, int8_t _RST = -1);
+        Adafruit_TFT(int8_t _CS, int8_t _DC, int8_t _MOSI, int8_t _SCLK, int8_t _RST = -1, int8_t _MISO = -1);
+        Adafruit_TFT(int8_t _CS, int8_t _DC, int8_t _RST = -1);
 
 #ifndef ESP32
         void      begin(uint32_t freq = 0);
 #else
-        void      begin(uint32_t freq = 0, SPIClass &spi=TFTSPI);
+        void      begin(uint32_t freq = 0, SPIClass &spi = SPI);
 #endif
-		void displayInit(const uint8_t *addr);
+		void 	  displayInit(const uint8_t *addr);
 		void      softReset();
         void      setRotation(uint8_t r);
         void      invertDisplay(boolean i);
@@ -201,7 +274,7 @@ class Adafruit_ST7789 : public Adafruit_GFX {
         void      writePixel(uint16_t color);
         void      writePixels(uint16_t * colors, uint32_t len);
         void      writeColor(uint16_t color, uint32_t len);
-	void      pushColor(uint16_t color);
+		void      pushColor(uint16_t color);
 
         // Recommended Non-Transaction
         void      drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color);
@@ -216,7 +289,7 @@ class Adafruit_ST7789 : public Adafruit_GFX {
 
         uint16_t  color565(uint8_t r, uint8_t g, uint8_t b);
 
-    private:
+//    private:
 #ifdef ESP32
         SPIClass _spi;
 #endif
@@ -247,5 +320,36 @@ class Adafruit_ST7789 : public Adafruit_GFX {
         void        spiWrite(uint8_t v);
         uint8_t     spiRead(void);
 };
+
+// Subclass of TFT type display for ST7789 TFT Driver
+class Adafruit_ST7789 : public Adafruit_TFT {
+  public:
+    Adafruit_ST7789(int8_t _CS, int8_t _DC, int8_t _MOSI, int8_t _SCLK, int8_t _RST = -1, int8_t _MISO = -1);
+    Adafruit_ST7789(int8_t _CS, int8_t _DC, int8_t _RST = -1);
+
+#ifdef ESP32
+	void begin(uint32_t freq = 0, SPIClass &spi = SPI);
+#else
+	void begin(uint32_t freq = 0);
+#endif
+
+    void setRotation(uint8_t m);
+};
+
+// Subclass of TFT type display for ST7735 TFT Driver
+class Adafruit_ST7735 : public Adafruit_TFT {
+  public:
+    Adafruit_ST7735(int8_t _CS, int8_t _DC, int8_t _MOSI, int8_t _SCLK, int8_t _RST = -1, int8_t _MISO = -1);
+    Adafruit_ST7735(int8_t _CS, int8_t _DC, int8_t _RST = -1);
+
+#ifdef ESP32
+	void begin(uint32_t freq = 0, SPIClass &spi = SPI);
+#else
+	void begin(uint32_t freq = 0);
+#endif
+
+    void setRotation(uint8_t m);
+};
+
 
 #endif

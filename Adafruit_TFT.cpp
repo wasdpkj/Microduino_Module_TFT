@@ -1,5 +1,5 @@
 	/*!
-* @file Adafruit_ST7789.cpp
+* @file Adafruit_TFT.cpp
 *
 * @mainpage Adafruit ST7789 TFT Displays
 *
@@ -46,7 +46,7 @@
 *
 */
 
-#include "Adafruit_ST7789.h"
+#include "Adafruit_TFT.h"
 #ifndef ARDUINO_STM32_FEATHER
   #include "pins_arduino.h"
   #ifndef RASPI
@@ -55,136 +55,14 @@
 #endif
 #include <limits.h>
 
-#define MADCTL_MY  0x80     ///< Right to left
-#define MADCTL_MX  0x40     ///< Bottom to top
-#define MADCTL_MV  0x20     ///< Reverse Mode
-#define MADCTL_ML  0x10     ///< LCD refresh Bottom to top
-#define MADCTL_RGB 0x00     ///< Red-Green-Blue pixel order
-#define MADCTL_BGR 0x08     ///< Blue-Green-Red pixel order
-#define MADCTL_MH  0x04     ///< LCD refresh right to left
-
-/*
- * Control Pins
- * */
-
-#ifdef USE_FAST_PINIO
-#define SPI_DC_HIGH()           *dcport |=  dcpinmask   ///< set DataCommand pin high
-#define SPI_DC_LOW()            *dcport &= ~dcpinmask   ///< set DataCommand pin low
-#define SPI_CS_HIGH()           *csport |= cspinmask    ///< set ChipSelect pin high
-#define SPI_CS_LOW()            *csport &= ~cspinmask   ///< set ChipSelect pin high
-#else
-#define SPI_DC_HIGH()           digitalWrite(_dc, HIGH) ///< set DataCommand pin high
-#define SPI_DC_LOW()            digitalWrite(_dc, LOW)  ///< set DataCommand pin low
-#define SPI_CS_HIGH()           digitalWrite(_cs, HIGH) ///< set ChipSelect pin high
-#define SPI_CS_LOW()            digitalWrite(_cs, LOW)  ///< set ChipSelect pin high
-#endif
-
-/*
- * Hardware SPI Macros
- * */
-
-#ifndef ESP32
-    #define SPI_OBJECT  SPI         ///< Default SPI hardware peripheral
-#else
-    #define SPI_OBJECT  _spi        ///< Default SPI hardware peripheral
-#endif
-
-#if defined (__AVR__) ||  defined(TEENSYDUINO) ||  defined(ARDUINO_ARCH_STM32F1)
-    #define HSPI_SET_CLOCK() SPI_OBJECT.setClockDivider(SPI_CLOCK_DIV2);
-#elif defined (__arm__)
-    #define HSPI_SET_CLOCK() SPI_OBJECT.setClockDivider(11);
-#elif defined(ESP8266) || defined(ESP32)
-    #define HSPI_SET_CLOCK() SPI_OBJECT.setFrequency(_freq);
-#elif defined(RASPI)
-    #define HSPI_SET_CLOCK() SPI_OBJECT.setClock(_freq);
-#elif defined(ARDUINO_ARCH_STM32F1)
-    #define HSPI_SET_CLOCK() SPI_OBJECT.setClock(_freq);
-#else
-    #define HSPI_SET_CLOCK()   ///< Hardware SPI set clock frequency
-#endif
-
-#ifdef SPI_HAS_TRANSACTION
-    #define HSPI_BEGIN_TRANSACTION() SPI_OBJECT.beginTransaction(SPISettings(_freq, MSBFIRST, SPI_MODE0))
-    #define HSPI_END_TRANSACTION()   SPI_OBJECT.endTransaction()
-#else
-    #define HSPI_BEGIN_TRANSACTION() HSPI_SET_CLOCK(); SPI_OBJECT.setBitOrder(MSBFIRST); SPI_OBJECT.setDataMode(SPI_MODE0)        ///< Hardware SPI begin transaction
-    #define HSPI_END_TRANSACTION()    ///< Hardware SPI end transaction
-#endif
-
-#ifdef ESP32
-    #define SPI_HAS_WRITE_PIXELS
-#endif
-#if defined(ESP8266) || defined(ESP32)
-    // Optimized SPI (ESP8266 and ESP32)
-    #define HSPI_READ()              SPI_OBJECT.transfer(0)    ///< Hardware SPI read 8 bits
-    #define HSPI_WRITE(b)            SPI_OBJECT.write(b)       ///< Hardware SPI write 8 bits
-    #define HSPI_WRITE16(s)          SPI_OBJECT.write16(s)     ///< Hardware SPI write 16 bits
-    #define HSPI_WRITE32(l)          SPI_OBJECT.write32(l)     ///< Hardware SPI write 32 bits
-    #ifdef SPI_HAS_WRITE_PIXELS
-        #define SPI_MAX_PIXELS_AT_ONCE  32
-        #define HSPI_WRITE_PIXELS(c,l)   SPI_OBJECT.writePixels(c,l)
-    #else
-        #define HSPI_WRITE_PIXELS(c,l)   for(uint32_t i=0; i<((l)/2); i++){ SPI_WRITE16(((uint16_t*)(c))[i]); }
-    #endif
-#else
-    // Standard Byte-by-Byte SPI
-
-    #if defined (__AVR__) || defined(TEENSYDUINO)
-static inline uint8_t _avr_spi_read(void) __attribute__((always_inline));
-static inline uint8_t _avr_spi_read(void) {
-    uint8_t r = 0;
-    SPDR = r;
-    while(!(SPSR & _BV(SPIF)));
-    r = SPDR;
-    return r;
-}
-        #define HSPI_WRITE(b)            {SPDR = (b); while(!(SPSR & _BV(SPIF)));}
-        #define HSPI_READ()              _avr_spi_read()
-    #else
-        #define HSPI_WRITE(b)            SPI_OBJECT.transfer((uint8_t)(b))    ///< Hardware SPI write 8 bits
-        #define HSPI_READ()              HSPI_WRITE(0)    ///< Hardware SPI read 8 bits
-    #endif
-    #define HSPI_WRITE16(s)          HSPI_WRITE((s) >> 8); HSPI_WRITE(s)  ///< Hardware SPI write 16 bits
-    #define HSPI_WRITE32(l)          HSPI_WRITE((l) >> 24); HSPI_WRITE((l) >> 16); HSPI_WRITE((l) >> 8); HSPI_WRITE(l)          ///< Hardware SPI write 32 bits
-    #define HSPI_WRITE_PIXELS(c,l)   for(uint32_t i=0; i<(l); i+=2){ HSPI_WRITE(((uint8_t*)(c))[i+1]); HSPI_WRITE(((uint8_t*)(c))[i]); }       ///< Hardware SPI write 'l' pixels 16-bits each
-#endif
-
-/*
- * Final SPI Macros
- * */
-#if defined (ARDUINO_ARCH_ARC32) || defined (ARDUINO_MAXIM)
-#define SPI_DEFAULT_FREQ         16000000
-#elif defined (__AVR__) || defined(TEENSYDUINO)
-#define SPI_DEFAULT_FREQ         8000000
-#elif defined(ESP8266) || defined(ESP32)
-#define SPI_DEFAULT_FREQ         40000000
-#elif defined(RASPI)
-#define SPI_DEFAULT_FREQ         80000000
-#elif defined(ARDUINO_ARCH_STM32F1)
-#define SPI_DEFAULT_FREQ         36000000
-#else
-#define SPI_DEFAULT_FREQ         24000000      ///< Default SPI data clock frequency
-#endif
-
-#if defined(ESP8266) || defined(ESP32)
-#define SPI_BEGIN()             if(_sclk < 0){SPI_OBJECT.begin();}else{SPI_OBJECT.begin(_sclk,_miso,_mosi,-1);}          ///< SPI initialize
-#else
-#define SPI_BEGIN()             SPI_OBJECT.begin();          ///< SPI initialize
-#endif
-#define SPI_BEGIN_TRANSACTION() HSPI_BEGIN_TRANSACTION();    ///< SPI begin transaction
-#define SPI_END_TRANSACTION()   HSPI_END_TRANSACTION();      ///< SPI end transaction
-#define SPI_WRITE16(s)          HSPI_WRITE16(s);  ///< SPI write 16 bits
-#define SPI_WRITE32(l)          HSPI_WRITE32(l);  ///< SPI write 32 bits
-#define SPI_WRITE_PIXELS(c,l)   HSPI_WRITE_PIXELS(c,l);  ///< SPI write 'l' pixels of 16-bits each
-
 
 static const uint8_t PROGMEM
-  cmd_ST7789_240x240[] =  {                	// Init commands for 7789 screens
+  cmd_ST7789_240x240[] =  {             // Init commands for 7789 screens
     19,                              	//  9 commands in list:
     //ST7789_SWRESET,   ST_CMD_DELAY,	 	//  1: Software reset, no args, w/delay
-    //  255,                         		//    150 ms delay
+    //  150,                         		//    150 ms delay
     ST7789_SLPOUT ,   ST_CMD_DELAY, 	//  2: Out of sleep mode, no args, w/delay
-      120,                          	//     255 = 500 ms delay
+      255,                          	//     255 = 500 ms delay
 	ST7789_PWCTR1 	, 2,				//Power control
 	  0xA4,0xA1,						//AVDD=6.8V,AVCL=-4.8V,VDDS=2.3V
 	ST7789_GCCTL  	, 1,
@@ -235,6 +113,67 @@ static const uint8_t PROGMEM
 	  255 								//     255 = max (500 ms) delay
   };                          	
 
+static const uint8_t PROGMEM
+  cmd_ST7735_128x160[] =  {             // Init commands for 7789 screens
+    21,                       // 15 commands in list:
+    ST7735_SWRESET,   ST_CMD_DELAY,  //  1: Software reset, 0 args, w/delay
+      150,                    //     150 ms delay
+    ST7735_SLPOUT ,   ST_CMD_DELAY,  //  2: Out of sleep mode, 0 args, w/delay
+      255,                    //     500 ms delay
+    ST7735_FRMCTR1, 3      ,  //  3: Frame rate ctrl - normal mode, 3 args:
+      0x01, 0x2C, 0x2D,       //     Rate = fosc/(1x2+40) * (LINE+2C+2D)
+    ST7735_FRMCTR2, 3      ,  //  4: Frame rate control - idle mode, 3 args:
+      0x01, 0x2C, 0x2D,       //     Rate = fosc/(1x2+40) * (LINE+2C+2D)
+    ST7735_FRMCTR3, 6      ,  //  5: Frame rate ctrl - partial mode, 6 args:
+      0x01, 0x2C, 0x2D,       //     Dot inversion mode
+      0x01, 0x2C, 0x2D,       //     Line inversion mode
+    ST7735_INVCTR , 1      ,  //  6: Display inversion ctrl, 1 arg, no delay:
+      0x07,                   //     No inversion
+    ST7735_PWCTR1 , 3      ,  //  7: Power control, 3 args, no delay:
+      0xA2,
+      0x02,                   //     -4.6V
+      0x84,                   //     AUTO mode
+    ST7735_PWCTR2 , 1      ,  //  8: Power control, 1 arg, no delay:
+      0xC5,                   //     VGH25 = 2.4C VGSEL = -10 VGH = 3 * AVDD
+    ST7735_PWCTR3 , 2      ,  //  9: Power control, 2 args, no delay:
+      0x0A,                   //     Opamp current small
+      0x00,                   //     Boost frequency
+    ST7735_PWCTR4 , 2      ,  // 10: Power control, 2 args, no delay:
+      0x8A,                   //     BCLK/2, Opamp current small & Medium low
+      0x2A,  
+    ST7735_PWCTR5 , 2      ,  // 11: Power control, 2 args, no delay:
+      0x8A, 0xEE,
+    ST7735_VMCTR1 , 1      ,  // 12: Power control, 1 arg, no delay:
+      0x0E,
+    ST7735_INVOFF , 0      ,  // 13: Don't invert display, no args, no delay
+    ST7735_MADCTL , 1      ,  // 14: Memory access control (directions), 1 arg:
+      0xC0,                   //     row addr/col addr, bottom to top refresh
+    ST7735_COLMOD , 1      ,  // 15: set color mode, 1 arg, no delay:
+      0x05, 
+
+    ST7735_CASET  , 4      ,  //  1: Column addr set, 4 args, no delay:
+      0x00, 0x00,             //     XSTART = 0
+      0x00, 0x7F,             //     XEND = 127
+    ST7735_RASET  , 4      ,  //  2: Row addr set, 4 args, no delay:
+      0x00, 0x00,             //     XSTART = 0
+      0x00, 0x9F, 
+
+    ST7735_GMCTRP1, 16      , //  1: Magical unicorn dust, 16 args, no delay:
+      0x02, 0x1c, 0x07, 0x12,
+      0x37, 0x32, 0x29, 0x2d,
+      0x29, 0x25, 0x2B, 0x39,
+      0x00, 0x01, 0x03, 0x10,
+    ST7735_GMCTRN1, 16      , //  2: Sparkles and rainbows, 16 args, no delay:
+      0x03, 0x1d, 0x07, 0x06,
+      0x2E, 0x2C, 0x29, 0x2D,
+      0x2E, 0x2E, 0x37, 0x3F,
+      0x00, 0x00, 0x02, 0x10,
+    ST7735_NORON  ,    ST_CMD_DELAY, //  3: Normal display on, no args, w/delay
+      10,                     //     10 ms delay
+    ST7735_DISPON ,    ST_CMD_DELAY, //  4: Main screen turn on, no args w/delay
+      100 
+  };  
+  
 
 /**************************************************************************/
 /*!
@@ -244,7 +183,7 @@ static const uint8_t PROGMEM
     @param    rst   Reset pin # (optional, pass -1 if unused)
 */
 /**************************************************************************/
-Adafruit_ST7789::Adafruit_ST7789(int8_t cs, int8_t dc, int8_t mosi,
+Adafruit_TFT::Adafruit_TFT(int8_t cs, int8_t dc, int8_t mosi,
         int8_t sclk, int8_t rst, int8_t miso) : Adafruit_GFX(ST7789_TFTWIDTH, ST7789_TFTHEIGHT) {
     _cs   = cs;
     _dc   = dc;
@@ -277,7 +216,7 @@ Adafruit_ST7789::Adafruit_ST7789(int8_t cs, int8_t dc, int8_t mosi,
     @param    rst   Reset pin # (optional, pass -1 if unused)
 */
 /**************************************************************************/
-Adafruit_ST7789::Adafruit_ST7789(int8_t cs, int8_t dc, int8_t rst) : Adafruit_GFX(ST7789_TFTWIDTH, ST7789_TFTHEIGHT) {
+Adafruit_TFT::Adafruit_TFT(int8_t cs, int8_t dc, int8_t rst) : Adafruit_GFX(ST7789_TFTWIDTH, ST7789_TFTHEIGHT) {
     _cs   = cs;
     _dc   = dc;
     _rst  = rst;
@@ -302,7 +241,7 @@ Adafruit_ST7789::Adafruit_ST7789(int8_t cs, int8_t dc, int8_t rst) : Adafruit_GF
     @param  addr  Flash memory array with commands and data to send
 */
 /**************************************************************************/
-void Adafruit_ST7789::displayInit(const uint8_t *addr) {
+void Adafruit_TFT::displayInit(const uint8_t *addr) {
 
   uint8_t  numCommands, numArgs;
   uint16_t ms;
@@ -336,9 +275,9 @@ void Adafruit_ST7789::displayInit(const uint8_t *addr) {
 */
 /**************************************************************************/
 #ifdef ESP32
-void Adafruit_ST7789::begin(uint32_t freq, SPIClass &spi)
+void Adafruit_TFT::begin(uint32_t freq, SPIClass &spi)
 #else
-void Adafruit_ST7789::begin(uint32_t freq)
+void Adafruit_TFT::begin(uint32_t freq)
 #endif
 {
 #ifdef ESP32
@@ -349,38 +288,39 @@ void Adafruit_ST7789::begin(uint32_t freq)
     }
     _freq = freq;
 
-    // toggle RST low to reset
-    if (_rst >= 0) {
-        pinMode(_rst, OUTPUT);
-        digitalWrite(_rst, HIGH);
-        delay(100);
-        digitalWrite(_rst, LOW);
-        delay(100);
-        digitalWrite(_rst, HIGH);
-        delay(200);
-    }
-
     // Control Pins
+    if (_cs >= 0) {
+	  pinMode(_cs, OUTPUT);
+	  digitalWrite(_cs, HIGH);
+	}
     pinMode(_dc, OUTPUT);
     digitalWrite(_dc, LOW);
-    if (_cs >= 0) {
-	pinMode(_cs, OUTPUT);
-	digitalWrite(_cs, HIGH);
-	}
 
     // Hardware SPI
 	SPI_BEGIN();
-	
-	displayInit(cmd_ST7789_240x240);
-	setRotation(0);
 
+    // toggle RST low to reset
+    if (_rst >= 0) {
+      pinMode(_rst, OUTPUT);
+      digitalWrite(_rst, HIGH);
+      delay(100);
+      digitalWrite(_rst, LOW);
+      delay(100);
+      digitalWrite(_rst, HIGH);
+      delay(200);
+    }
+	
     _width  = ST7789_TFTWIDTH;
     _height = ST7789_TFTHEIGHT;
+	
+	softReset();
+	displayInit(cmd_ST7789_240x240);
+	setRotation(0);
 }
 
 
-void Adafruit_ST7789::softReset() {
-	writeCommand(ST7789_SWRESET);   // 1: Software reset, no args, w/delay
+void Adafruit_TFT::softReset() {
+	writeCommand(ST7789_SWRESET);
     delay(150);
 }
 
@@ -395,8 +335,551 @@ void Adafruit_ST7789::softReset() {
     @return   Unsigned 16-bit down-sampled color in 5-6-5 format
 */
 /**************************************************************************/
-uint16_t Adafruit_ST7789::color565(uint8_t red, uint8_t green, uint8_t blue) {
+uint16_t Adafruit_TFT::color565(uint8_t red, uint8_t green, uint8_t blue) {
     return ((red & 0xF8) << 8) | ((green & 0xFC) << 3) | ((blue) >> 3);
+}
+
+/**************************************************************************/
+/*!
+    @brief   Set origin of (0,0) and orientation of TFT display
+    @param   m  The index for rotation, from 0-3 inclusive
+*/
+/**************************************************************************/
+void Adafruit_TFT::setRotation(uint8_t m) {
+    rotation = m % 4; // can't be higher than 3
+    switch (rotation) {
+        case 0:
+            m = (0x00 | MADCTL_RGB);
+//			m=0x00;
+            _width  = ST7789_TFTWIDTH;
+            _height = ST7789_TFTHEIGHT;
+			scrollTo(0);
+            break;
+        case 1:
+            m = (MADCTL_MX | MADCTL_MV | MADCTL_RGB);
+//			m=0x60;
+            _width  = ST7789_TFTHEIGHT;
+            _height = ST7789_TFTWIDTH;
+			scrollTo(0);
+            break;
+        case 2:
+            m = (MADCTL_MX | MADCTL_MY | MADCTL_RGB);
+//			m=0xC0;
+            _width  = ST7789_TFTWIDTH;
+            _height = ST7789_TFTHEIGHT;
+			scrollTo(ST7789_240x240_YSTART);
+            break;
+        case 3:
+            m = (MADCTL_MY | MADCTL_MV | MADCTL_RGB);
+//			m=0xA0;
+            _width  = ST7789_TFTHEIGHT;
+            _height = ST7789_TFTWIDTH;
+			scrollTo(ST7789_240x240_YSTART);
+            break;
+    }
+
+/*	
+   switch (cwj) {
+      case 0x00:    //！正
+        tft.scrollTo(240);
+        break;
+      case 0x20:    //逆时针 镜像
+        tft.scrollTo(240);
+        break;
+      case 0x40:    //正 镜像
+        tft.scrollTo(240);
+        break;
+      case 0x60:    //！顺时针
+        tft.scrollTo(240);
+        break;
+      case 0x80:    //倒立 镜像
+        tft.scrollTo(0);
+        break;
+      case 0xA0:    //！逆时针
+        tft.scrollTo(0);
+        break;
+      case 0xC0:    //！倒立	
+        tft.scrollTo(0);
+        break;
+      case 0xE0:    //顺时针 镜像
+        tft.scrollTo(0);
+        break;
+    }
+*/
+    startWrite();
+    writeCommand(ST7789_MADCTL);
+    spiWrite(m);
+    endWrite();
+}
+
+/**************************************************************************/
+/*!
+    @brief   Enable/Disable display color inversion
+    @param   invert True to invert, False to have normal color
+*/
+/**************************************************************************/
+void Adafruit_TFT::invertDisplay(boolean invert) {
+    startWrite();
+    writeCommand(invert ? ST7789_INVON : ST7789_INVOFF);
+    endWrite();
+}
+
+/**************************************************************************/
+/*!
+    @brief   Scroll display memory
+    @param   y How many pixels to scroll display by
+*/
+/**************************************************************************/
+void Adafruit_TFT::scrollTo(uint16_t y) {
+    startWrite();
+    writeCommand(ST7789_VSCRSADD);
+    SPI_WRITE16(y);
+    endWrite();
+}
+
+/**************************************************************************/
+/*!
+    @brief   Set the "address window" - the rectangle we will write to RAM with the next chunk of SPI data writes. The ST7789 will automatically wrap the data as each row is filled
+    @param   x  TFT memory 'x' origin
+    @param   y  TFT memory 'y' origin
+    @param   w  Width of rectangle
+    @param   h  Height of rectangle
+*/
+/**************************************************************************/
+void Adafruit_TFT::setAddrWindow(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
+    uint32_t xa = ((uint32_t)x << 16) | (x+w-1);
+    uint32_t ya = ((uint32_t)y << 16) | (y+h-1);
+    writeCommand(ST7789_CASET); // Column addr set
+    SPI_WRITE32(xa);
+    writeCommand(ST7789_RASET); // Row addr set
+    SPI_WRITE32(ya);
+    writeCommand(ST7789_RAMWR); // write to RAM
+}
+
+/**************************************************************************/
+/*!
+    @brief   Blit 1 pixel of color without setting up SPI transaction
+    @param   color 16-bits of 5-6-5 color data
+/**************************************************************************/
+void Adafruit_TFT::pushColor(uint16_t color) {
+    SPI_WRITE16(color);
+}
+
+/**************************************************************************/
+/*!
+    @brief   Blit 1 pixel of color without setting up SPI transaction
+    @param   color 16-bits of 5-6-5 color data
+*/
+/**************************************************************************/
+void Adafruit_TFT::writePixel(uint16_t color){
+    SPI_WRITE16(color);
+}
+
+/**************************************************************************/
+/*!
+    @brief   Blit 'len' pixels of color without setting up SPI transaction
+    @param   colors Array of 16-bit 5-6-5 color data
+    @param   len Number of 16-bit pixels in colors array
+*/
+/**************************************************************************/
+void Adafruit_TFT::writePixels(uint16_t * colors, uint32_t len){
+    SPI_WRITE_PIXELS((uint8_t*)colors , len * 2);
+}
+
+/**************************************************************************/
+/*!
+    @brief   Blit 'len' pixels of a single color without setting up SPI transaction
+    @param   color 16-bits of 5-6-5 color data
+    @param   len Number of 16-bit pixels you want to write out with same color
+*/
+/**************************************************************************/
+void Adafruit_TFT::writeColor(uint16_t color, uint32_t len){
+#ifdef SPI_HAS_WRITE_PIXELS
+    if(_sclk >= 0){
+        for (uint32_t t=0; t<len; t++){
+            writePixel(color);
+        }
+        return;
+    }
+    static uint16_t temp[SPI_MAX_PIXELS_AT_ONCE];
+    size_t blen = (len > SPI_MAX_PIXELS_AT_ONCE)?SPI_MAX_PIXELS_AT_ONCE:len;
+    uint16_t tlen = 0;
+
+    for (uint32_t t=0; t<blen; t++){
+        temp[t] = color;
+    }
+
+    while(len){
+        tlen = (len>blen)?blen:len;
+        writePixels(temp, tlen);
+        len -= tlen;
+    }
+#else
+    uint8_t hi = color >> 8, lo = color;
+ //AVR Optimization
+    for (uint32_t t=len; t; t--){
+        HSPI_WRITE(hi);
+        HSPI_WRITE(lo);
+    }
+    return;
+    for (uint32_t t=len; t; t--){
+        spiWrite(hi);
+        spiWrite(lo);
+    }
+#endif
+}
+
+/**************************************************************************/
+/*!
+   @brief  Draw a single pixel, DOES NOT set up SPI transaction
+    @param    x  TFT X location
+    @param    y  TFT Y location
+    @param    color 16-bit 5-6-5 Color to draw with
+*/
+/**************************************************************************/
+void Adafruit_TFT::writePixel(int16_t x, int16_t y, uint16_t color) {
+    if((x < 0) ||(x >= _width) || (y < 0) || (y >= _height)) return;
+    setAddrWindow(x,y,1,1);
+    writePixel(color);
+}
+
+/**************************************************************************/
+/*!
+   @brief  Fill a rectangle, DOES NOT set up SPI transaction
+    @param    x  TFT X location begin
+    @param    y  TFT Y location begin
+    @param    w  Width of rectangle
+    @param    h  Height of rectangle
+    @param    color 16-bit 5-6-5 Color to fill with
+*/
+/**************************************************************************/
+void Adafruit_TFT::writeFillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color){
+    if((x >= _width) || (y >= _height)) return;
+    int16_t x2 = x + w - 1, y2 = y + h - 1;
+    if((x2 < 0) || (y2 < 0)) return;
+
+    // Clip left/top
+    if(x < 0) {
+        x = 0;
+        w = x2 + 1;
+    }
+    if(y < 0) {
+        y = 0;
+        h = y2 + 1;
+    }
+
+    // Clip right/bottom
+    if(x2 >= _width)  w = _width  - x;
+    if(y2 >= _height) h = _height - y;
+
+    int32_t len = (int32_t)w * h;
+    setAddrWindow(x, y, w, h);
+    writeColor(color, len);
+}
+
+
+/**************************************************************************/
+/*!
+   @brief  Draw a vertical line, DOES NOT set up SPI transaction
+    @param    x  TFT X location begin
+    @param    y  TFT Y location begin
+    @param    l  Length of line in pixels
+    @param    color 16-bit 5-6-5 Color to draw with
+*/
+/**************************************************************************/
+void Adafruit_TFT::writeFastVLine(int16_t x, int16_t y, int16_t l, uint16_t color){
+    writeFillRect(x, y, 1, l, color);
+}
+
+
+/**************************************************************************/
+/*!
+   @brief  Draw a horizontal line, DOES NOT set up SPI transaction
+    @param    x  TFT X location begin
+    @param    y  TFT Y location begin
+    @param    l  Length of line in pixels
+    @param    color 16-bit 5-6-5 Color to draw with
+*/
+/**************************************************************************/
+void Adafruit_TFT::writeFastHLine(int16_t x, int16_t y, int16_t l, uint16_t color){
+    writeFillRect(x, y, l, 1, color);
+}
+
+/**************************************************************************/
+/*!
+   @brief  Draw a single pixel, includes code for SPI transaction
+    @param    x  TFT X location
+    @param    y  TFT Y location
+    @param    color 16-bit 5-6-5 Color to draw with
+*/
+/**************************************************************************/
+void Adafruit_TFT::drawPixel(int16_t x, int16_t y, uint16_t color){
+    startWrite();
+    writePixel(x, y, color);
+    endWrite();
+}
+
+/**************************************************************************/
+/*!
+   @brief  Draw a vertical line, includes code for SPI transaction
+    @param    x  TFT X location begin
+    @param    y  TFT Y location begin
+    @param    l  Length of line in pixels
+    @param    color 16-bit 5-6-5 Color to draw with
+*/
+/**************************************************************************/
+void Adafruit_TFT::drawFastVLine(int16_t x, int16_t y,
+        int16_t l, uint16_t color) {
+    startWrite();
+    writeFastVLine(x, y, l, color);
+    endWrite();
+}
+
+/**************************************************************************/
+/*!
+   @brief  Draw a horizontal line, includes code for SPI transaction
+    @param    x  TFT X location begin
+    @param    y  TFT Y location begin
+    @param    l  Length of line in pixels
+    @param    color 16-bit 5-6-5 Color to draw with
+*/
+/**************************************************************************/
+void Adafruit_TFT::drawFastHLine(int16_t x, int16_t y,
+        int16_t l, uint16_t color) {
+    startWrite();
+    writeFastHLine(x, y, l, color);
+    endWrite();
+}
+
+/**************************************************************************/
+/*!
+   @brief  Fill a rectangle, includes code for SPI transaction
+    @param    x  TFT X location begin
+    @param    y  TFT Y location begin
+    @param    w  Width of rectangle
+    @param    h  Height of rectangle
+    @param    color 16-bit 5-6-5 Color to fill with
+*/
+/**************************************************************************/
+void Adafruit_TFT::fillRect(int16_t x, int16_t y, int16_t w, int16_t h,
+        uint16_t color) {
+    startWrite();
+    writeFillRect(x,y,w,h,color);
+    endWrite();
+}
+
+/**************************************************************************/
+/*!
+   @brief  Draw RGB rectangle of data from RAM to a location on screen
+   Adapted from https://github.com/PaulStoffregen/ST7789_t3
+   by Marc MERLIN. See examples/pictureEmbed to use this.
+   5/6/2017: function name and arguments have changed for compatibility
+   with current GFX library and to avoid naming problems in prior
+   implementation.  Formerly drawBitmap() with arguments in different order.
+
+    @param    x  TFT X location begin
+    @param    y  TFT Y location begin
+    @param    pcolors Pointer to 16-bit color data
+    @param    w  Width of pcolors rectangle
+    @param    h  Height of pcolors rectangle
+*/
+/**************************************************************************/
+void Adafruit_TFT::drawRGBBitmap(int16_t x, int16_t y,
+  uint16_t *pcolors, int16_t w, int16_t h) {
+
+    int16_t x2, y2; // Lower-right coord
+    if(( x             >= _width ) ||      // Off-edge right
+       ( y             >= _height) ||      // " top
+       ((x2 = (x+w-1)) <  0      ) ||      // " left
+       ((y2 = (y+h-1)) <  0)     ) return; // " bottom
+
+    int16_t bx1=0, by1=0, // Clipped top-left within bitmap
+            saveW=w;      // Save original bitmap width value
+    if(x < 0) { // Clip left
+        w  +=  x;
+        bx1 = -x;
+        x   =  0;
+    }
+    if(y < 0) { // Clip top
+        h  +=  y;
+        by1 = -y;
+        y   =  0;
+    }
+    if(x2 >= _width ) w = _width  - x; // Clip right
+    if(y2 >= _height) h = _height - y; // Clip bottom
+
+    pcolors += by1 * saveW + bx1; // Offset bitmap ptr to clipped top-left
+    startWrite();
+    setAddrWindow(x, y, w, h); // Clipped area
+    while(h--) { // For each (clipped) scanline...
+      writePixels(pcolors, w); // Push one (clipped) row
+      pcolors += saveW; // Advance pointer by one full (unclipped) line
+    }
+    endWrite();
+}
+
+
+/**************************************************************************/
+/*!
+   @brief  Read 8 bits of data from ST7789 configuration memory. NOT from RAM!
+           This is highly undocumented/supported, it's really a hack but kinda works?
+    @param    command  The command register to read data from
+    @param    index  The byte index into the command to read from
+    @return   Unsigned 8-bit data read from ST7789 register
+*/
+/**************************************************************************/
+uint8_t Adafruit_TFT::readcommand8(uint8_t command, uint8_t index) {
+    uint32_t freq = _freq;
+    if(_freq > 24000000){
+        _freq = 24000000;
+    }
+    startWrite();
+    writeCommand(0xD9);  // woo sekret command?
+    spiWrite(0x10 + index);
+    writeCommand(command);
+    uint8_t r = spiRead();
+    endWrite();
+    _freq = freq;
+    return r;
+}
+
+
+/**************************************************************************/
+/*!
+   @brief  Begin SPI transaction, for hardware SPI
+*/
+/**************************************************************************/
+void Adafruit_TFT::startWrite(void){
+    SPI_BEGIN_TRANSACTION();
+    if (_cs >= 0) {
+    SPI_CS_LOW();
+	}
+}
+
+/**************************************************************************/
+/*!
+   @brief  End SPI transaction, for hardware SPI
+*/
+/**************************************************************************/
+void Adafruit_TFT::endWrite(void){
+    if (_cs >= 0) {
+    SPI_CS_HIGH();
+	}
+    SPI_END_TRANSACTION();
+}
+
+/**************************************************************************/
+/*!
+   @brief  Write 8-bit data to command/register (DataCommand line low).
+   Does not set up SPI transaction.
+   @param  cmd The command/register to transmit
+*/
+/**************************************************************************/
+void Adafruit_TFT::writeCommand(uint8_t cmd){
+    SPI_DC_LOW();
+    spiWrite(cmd);
+    SPI_DC_HIGH();
+}
+
+
+/**************************************************************************/
+/*!
+   @brief  Read 8-bit data via hardware SPI. Does not set up SPI transaction.
+   @returns One byte of data from SPI
+*/
+/**************************************************************************/
+uint8_t Adafruit_TFT::spiRead() {
+    if(_miso < 0){
+        return 0;
+    }
+    return HSPI_READ();
+}
+
+/**************************************************************************/
+/*!
+   @brief  Write 8-bit data via hardware SPI. Does not set up SPI transaction.
+   @param  b Byte of data to write over SPI
+*/
+/**************************************************************************/
+void Adafruit_TFT::spiWrite(uint8_t b) {
+    HSPI_WRITE(b);
+    return;
+}
+
+
+/**************************************************************************/
+/*!
+    @brief  Instantiate Adafruit ST7789 driver with SPI
+    @param    cs    Chip select pin #
+    @param    dc    Data/Command pin #
+    @param    rst   Reset pin # (optional, pass -1 if unused)
+*/
+/**************************************************************************/
+Adafruit_ST7789::Adafruit_ST7789(int8_t cs, int8_t dc, int8_t mosi, int8_t sclk, int8_t rst, int8_t miso) : 
+	Adafruit_TFT(cs,dc,mosi,sclk,rst,miso) {
+}
+
+/**************************************************************************/
+/*!
+    @brief  Instantiate Adafruit ST7789 driver with SPI
+    @param    cs    Chip select pin #
+    @param    dc    Data/Command pin #
+    @param    rst   Reset pin # (optional, pass -1 if unused)
+*/
+/**************************************************************************/
+Adafruit_ST7789::Adafruit_ST7789(int8_t cs, int8_t dc, int8_t rst) : 
+	Adafruit_TFT(cs,dc,rst) {
+}
+
+/**************************************************************************/
+/*!
+    @brief   Initialize ST7789 chip
+    Connects to the ST7789 over SPI and sends initialization procedure commands
+    @param    freq  Desired SPI clock frequency
+*/
+/**************************************************************************/
+#ifdef ESP32
+void Adafruit_ST7789::begin(uint32_t freq, SPIClass &spi)
+#else
+void Adafruit_ST7789::begin(uint32_t freq)
+#endif
+{
+#ifdef ESP32
+    _spi = spi;
+#endif
+    if(!freq){
+        freq = SPI_DEFAULT_FREQ;
+    }
+    _freq = freq;
+
+    // Control Pins
+    if (_cs >= 0) {
+	  pinMode(_cs, OUTPUT);
+	  digitalWrite(_cs, HIGH);
+	}
+    pinMode(_dc, OUTPUT);
+    digitalWrite(_dc, LOW);
+
+    // Hardware SPI
+	SPI_BEGIN();
+
+    // toggle RST low to reset
+    if (_rst >= 0) {
+      pinMode(_rst, OUTPUT);
+      digitalWrite(_rst, HIGH);
+      delay(100);
+      digitalWrite(_rst, LOW);
+      delay(100);
+      digitalWrite(_rst, HIGH);
+      delay(200);
+    }
+	
+    _width  = ST7789_TFTWIDTH;
+    _height = ST7789_TFTHEIGHT;
+	
+	softReset();
+	displayInit(cmd_ST7789_240x240);
+	setRotation(0);
 }
 
 /**************************************************************************/
@@ -472,396 +955,153 @@ void Adafruit_ST7789::setRotation(uint8_t m) {
     endWrite();
 }
 
+
+
+
 /**************************************************************************/
 /*!
-    @brief   Enable/Disable display color inversion
-    @param   invert True to invert, False to have normal color
+    @brief  Instantiate Adafruit ST7789 driver with SPI
+    @param    cs    Chip select pin #
+    @param    dc    Data/Command pin #
+    @param    rst   Reset pin # (optional, pass -1 if unused)
 */
 /**************************************************************************/
-void Adafruit_ST7789::invertDisplay(boolean invert) {
-    startWrite();
-    writeCommand(invert ? ST7789_INVON : ST7789_INVOFF);
-    endWrite();
+Adafruit_ST7735::Adafruit_ST7735(int8_t cs, int8_t dc, int8_t mosi, int8_t sclk, int8_t rst, int8_t miso) : 
+	Adafruit_TFT(cs,dc,mosi,sclk,rst,miso) {
 }
 
 /**************************************************************************/
 /*!
-    @brief   Scroll display memory
-    @param   y How many pixels to scroll display by
+    @brief  Instantiate Adafruit ST7789 driver with SPI
+    @param    cs    Chip select pin #
+    @param    dc    Data/Command pin #
+    @param    rst   Reset pin # (optional, pass -1 if unused)
 */
 /**************************************************************************/
-void Adafruit_ST7789::scrollTo(uint16_t y) {
-    startWrite();
-    writeCommand(ST7789_VSCRSADD);
-    SPI_WRITE16(y);
-    endWrite();
+Adafruit_ST7735::Adafruit_ST7735(int8_t cs, int8_t dc, int8_t rst) : 
+	Adafruit_TFT(cs,dc,rst) {
 }
 
 /**************************************************************************/
 /*!
-    @brief   Set the "address window" - the rectangle we will write to RAM with the next chunk of SPI data writes. The ST7789 will automatically wrap the data as each row is filled
-    @param   x  TFT memory 'x' origin
-    @param   y  TFT memory 'y' origin
-    @param   w  Width of rectangle
-    @param   h  Height of rectangle
+    @brief   Initialize ST7789 chip
+    Connects to the ST7789 over SPI and sends initialization procedure commands
+    @param    freq  Desired SPI clock frequency
 */
 /**************************************************************************/
-void Adafruit_ST7789::setAddrWindow(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
-    uint32_t xa = ((uint32_t)x << 16) | (x+w-1);
-    uint32_t ya = ((uint32_t)y << 16) | (y+h-1);
-    writeCommand(ST7789_CASET); // Column addr set
-    SPI_WRITE32(xa);
-    writeCommand(ST7789_RASET); // Row addr set
-    SPI_WRITE32(ya);
-    writeCommand(ST7789_RAMWR); // write to RAM
-}
-
-/**************************************************************************/
-/*!
-    @brief   Blit 1 pixel of color without setting up SPI transaction
-    @param   color 16-bits of 5-6-5 color data
-/**************************************************************************/
-void Adafruit_ST7789::pushColor(uint16_t color) {
-    SPI_WRITE16(color);
-}
-
-/**************************************************************************/
-/*!
-    @brief   Blit 1 pixel of color without setting up SPI transaction
-    @param   color 16-bits of 5-6-5 color data
-*/
-/**************************************************************************/
-void Adafruit_ST7789::writePixel(uint16_t color){
-    SPI_WRITE16(color);
-}
-
-/**************************************************************************/
-/*!
-    @brief   Blit 'len' pixels of color without setting up SPI transaction
-    @param   colors Array of 16-bit 5-6-5 color data
-    @param   len Number of 16-bit pixels in colors array
-*/
-/**************************************************************************/
-void Adafruit_ST7789::writePixels(uint16_t * colors, uint32_t len){
-    SPI_WRITE_PIXELS((uint8_t*)colors , len * 2);
-}
-
-/**************************************************************************/
-/*!
-    @brief   Blit 'len' pixels of a single color without setting up SPI transaction
-    @param   color 16-bits of 5-6-5 color data
-    @param   len Number of 16-bit pixels you want to write out with same color
-*/
-/**************************************************************************/
-void Adafruit_ST7789::writeColor(uint16_t color, uint32_t len){
-#ifdef SPI_HAS_WRITE_PIXELS
-    if(_sclk >= 0){
-        for (uint32_t t=0; t<len; t++){
-            writePixel(color);
-        }
-        return;
-    }
-    static uint16_t temp[SPI_MAX_PIXELS_AT_ONCE];
-    size_t blen = (len > SPI_MAX_PIXELS_AT_ONCE)?SPI_MAX_PIXELS_AT_ONCE:len;
-    uint16_t tlen = 0;
-
-    for (uint32_t t=0; t<blen; t++){
-        temp[t] = color;
-    }
-
-    while(len){
-        tlen = (len>blen)?blen:len;
-        writePixels(temp, tlen);
-        len -= tlen;
-    }
+#ifdef ESP32
+void Adafruit_ST7735::begin(uint32_t freq, SPIClass &spi)
 #else
-    uint8_t hi = color >> 8, lo = color;
- //AVR Optimization
-    for (uint32_t t=len; t; t--){
-        HSPI_WRITE(hi);
-        HSPI_WRITE(lo);
-    }
-    return;
-    for (uint32_t t=len; t; t--){
-        spiWrite(hi);
-        spiWrite(lo);
-    }
+void Adafruit_ST7735::begin(uint32_t freq)
 #endif
-}
-
-/**************************************************************************/
-/*!
-   @brief  Draw a single pixel, DOES NOT set up SPI transaction
-    @param    x  TFT X location
-    @param    y  TFT Y location
-    @param    color 16-bit 5-6-5 Color to draw with
-*/
-/**************************************************************************/
-void Adafruit_ST7789::writePixel(int16_t x, int16_t y, uint16_t color) {
-    if((x < 0) ||(x >= _width) || (y < 0) || (y >= _height)) return;
-    setAddrWindow(x,y,1,1);
-    writePixel(color);
-}
-
-/**************************************************************************/
-/*!
-   @brief  Fill a rectangle, DOES NOT set up SPI transaction
-    @param    x  TFT X location begin
-    @param    y  TFT Y location begin
-    @param    w  Width of rectangle
-    @param    h  Height of rectangle
-    @param    color 16-bit 5-6-5 Color to fill with
-*/
-/**************************************************************************/
-void Adafruit_ST7789::writeFillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color){
-    if((x >= _width) || (y >= _height)) return;
-    int16_t x2 = x + w - 1, y2 = y + h - 1;
-    if((x2 < 0) || (y2 < 0)) return;
-
-    // Clip left/top
-    if(x < 0) {
-        x = 0;
-        w = x2 + 1;
+{
+#ifdef ESP32
+    _spi = spi;
+#endif
+    if(!freq){
+        freq = SPI_DEFAULT_FREQ;
     }
-    if(y < 0) {
-        y = 0;
-        h = y2 + 1;
-    }
-
-    // Clip right/bottom
-    if(x2 >= _width)  w = _width  - x;
-    if(y2 >= _height) h = _height - y;
-
-    int32_t len = (int32_t)w * h;
-    setAddrWindow(x, y, w, h);
-    writeColor(color, len);
-}
-
-
-/**************************************************************************/
-/*!
-   @brief  Draw a vertical line, DOES NOT set up SPI transaction
-    @param    x  TFT X location begin
-    @param    y  TFT Y location begin
-    @param    l  Length of line in pixels
-    @param    color 16-bit 5-6-5 Color to draw with
-*/
-/**************************************************************************/
-void Adafruit_ST7789::writeFastVLine(int16_t x, int16_t y, int16_t l, uint16_t color){
-    writeFillRect(x, y, 1, l, color);
-}
-
-
-/**************************************************************************/
-/*!
-   @brief  Draw a horizontal line, DOES NOT set up SPI transaction
-    @param    x  TFT X location begin
-    @param    y  TFT Y location begin
-    @param    l  Length of line in pixels
-    @param    color 16-bit 5-6-5 Color to draw with
-*/
-/**************************************************************************/
-void Adafruit_ST7789::writeFastHLine(int16_t x, int16_t y, int16_t l, uint16_t color){
-    writeFillRect(x, y, l, 1, color);
-}
-
-/**************************************************************************/
-/*!
-   @brief  Draw a single pixel, includes code for SPI transaction
-    @param    x  TFT X location
-    @param    y  TFT Y location
-    @param    color 16-bit 5-6-5 Color to draw with
-*/
-/**************************************************************************/
-void Adafruit_ST7789::drawPixel(int16_t x, int16_t y, uint16_t color){
-    startWrite();
-    writePixel(x, y, color);
-    endWrite();
-}
-
-/**************************************************************************/
-/*!
-   @brief  Draw a vertical line, includes code for SPI transaction
-    @param    x  TFT X location begin
-    @param    y  TFT Y location begin
-    @param    l  Length of line in pixels
-    @param    color 16-bit 5-6-5 Color to draw with
-*/
-/**************************************************************************/
-void Adafruit_ST7789::drawFastVLine(int16_t x, int16_t y,
-        int16_t l, uint16_t color) {
-    startWrite();
-    writeFastVLine(x, y, l, color);
-    endWrite();
-}
-
-/**************************************************************************/
-/*!
-   @brief  Draw a horizontal line, includes code for SPI transaction
-    @param    x  TFT X location begin
-    @param    y  TFT Y location begin
-    @param    l  Length of line in pixels
-    @param    color 16-bit 5-6-5 Color to draw with
-*/
-/**************************************************************************/
-void Adafruit_ST7789::drawFastHLine(int16_t x, int16_t y,
-        int16_t l, uint16_t color) {
-    startWrite();
-    writeFastHLine(x, y, l, color);
-    endWrite();
-}
-
-/**************************************************************************/
-/*!
-   @brief  Fill a rectangle, includes code for SPI transaction
-    @param    x  TFT X location begin
-    @param    y  TFT Y location begin
-    @param    w  Width of rectangle
-    @param    h  Height of rectangle
-    @param    color 16-bit 5-6-5 Color to fill with
-*/
-/**************************************************************************/
-void Adafruit_ST7789::fillRect(int16_t x, int16_t y, int16_t w, int16_t h,
-        uint16_t color) {
-    startWrite();
-    writeFillRect(x,y,w,h,color);
-    endWrite();
-}
-
-/**************************************************************************/
-/*!
-   @brief  Draw RGB rectangle of data from RAM to a location on screen
-   Adapted from https://github.com/PaulStoffregen/ST7789_t3
-   by Marc MERLIN. See examples/pictureEmbed to use this.
-   5/6/2017: function name and arguments have changed for compatibility
-   with current GFX library and to avoid naming problems in prior
-   implementation.  Formerly drawBitmap() with arguments in different order.
-
-    @param    x  TFT X location begin
-    @param    y  TFT Y location begin
-    @param    pcolors Pointer to 16-bit color data
-    @param    w  Width of pcolors rectangle
-    @param    h  Height of pcolors rectangle
-*/
-/**************************************************************************/
-void Adafruit_ST7789::drawRGBBitmap(int16_t x, int16_t y,
-  uint16_t *pcolors, int16_t w, int16_t h) {
-
-    int16_t x2, y2; // Lower-right coord
-    if(( x             >= _width ) ||      // Off-edge right
-       ( y             >= _height) ||      // " top
-       ((x2 = (x+w-1)) <  0      ) ||      // " left
-       ((y2 = (y+h-1)) <  0)     ) return; // " bottom
-
-    int16_t bx1=0, by1=0, // Clipped top-left within bitmap
-            saveW=w;      // Save original bitmap width value
-    if(x < 0) { // Clip left
-        w  +=  x;
-        bx1 = -x;
-        x   =  0;
-    }
-    if(y < 0) { // Clip top
-        h  +=  y;
-        by1 = -y;
-        y   =  0;
-    }
-    if(x2 >= _width ) w = _width  - x; // Clip right
-    if(y2 >= _height) h = _height - y; // Clip bottom
-
-    pcolors += by1 * saveW + bx1; // Offset bitmap ptr to clipped top-left
-    startWrite();
-    setAddrWindow(x, y, w, h); // Clipped area
-    while(h--) { // For each (clipped) scanline...
-      writePixels(pcolors, w); // Push one (clipped) row
-      pcolors += saveW; // Advance pointer by one full (unclipped) line
-    }
-    endWrite();
-}
-
-
-/**************************************************************************/
-/*!
-   @brief  Read 8 bits of data from ST7789 configuration memory. NOT from RAM!
-           This is highly undocumented/supported, it's really a hack but kinda works?
-    @param    command  The command register to read data from
-    @param    index  The byte index into the command to read from
-    @return   Unsigned 8-bit data read from ST7789 register
-*/
-/**************************************************************************/
-uint8_t Adafruit_ST7789::readcommand8(uint8_t command, uint8_t index) {
-    uint32_t freq = _freq;
-    if(_freq > 24000000){
-        _freq = 24000000;
-    }
-    startWrite();
-    writeCommand(0xD9);  // woo sekret command?
-    spiWrite(0x10 + index);
-    writeCommand(command);
-    uint8_t r = spiRead();
-    endWrite();
     _freq = freq;
-    return r;
-}
 
-
-/**************************************************************************/
-/*!
-   @brief  Begin SPI transaction, for hardware SPI
-*/
-/**************************************************************************/
-void Adafruit_ST7789::startWrite(void){
-    SPI_BEGIN_TRANSACTION();
+    // Control Pins
     if (_cs >= 0) {
-    SPI_CS_LOW();
+	  pinMode(_cs, OUTPUT);
+	  digitalWrite(_cs, HIGH);
 	}
-}
+    pinMode(_dc, OUTPUT);
+    digitalWrite(_dc, LOW);
 
-/**************************************************************************/
-/*!
-   @brief  End SPI transaction, for hardware SPI
-*/
-/**************************************************************************/
-void Adafruit_ST7789::endWrite(void){
-    if (_cs >= 0) {
-    SPI_CS_HIGH();
-	}
-    SPI_END_TRANSACTION();
-}
+    // Hardware SPI
+	SPI_BEGIN();
 
-/**************************************************************************/
-/*!
-   @brief  Write 8-bit data to command/register (DataCommand line low).
-   Does not set up SPI transaction.
-   @param  cmd The command/register to transmit
-*/
-/**************************************************************************/
-void Adafruit_ST7789::writeCommand(uint8_t cmd){
-    SPI_DC_LOW();
-    spiWrite(cmd);
-    SPI_DC_HIGH();
-}
-
-
-/**************************************************************************/
-/*!
-   @brief  Read 8-bit data via hardware SPI. Does not set up SPI transaction.
-   @returns One byte of data from SPI
-*/
-/**************************************************************************/
-uint8_t Adafruit_ST7789::spiRead() {
-    if(_miso < 0){
-        return 0;
+    // toggle RST low to reset
+    if (_rst >= 0) {
+      pinMode(_rst, OUTPUT);
+      digitalWrite(_rst, HIGH);
+      delay(100);
+      digitalWrite(_rst, LOW);
+      delay(100);
+      digitalWrite(_rst, HIGH);
+      delay(200);
     }
-    return HSPI_READ();
+	
+    _width  = ST7735_TFTWIDTH;
+    _height = ST7735_TFTHEIGHT;
+	
+	softReset();
+	displayInit(cmd_ST7735_128x160);
+	setRotation(0);
 }
 
 /**************************************************************************/
 /*!
-   @brief  Write 8-bit data via hardware SPI. Does not set up SPI transaction.
-   @param  b Byte of data to write over SPI
+    @brief   Set origin of (0,0) and orientation of TFT display
+    @param   m  The index for rotation, from 0-3 inclusive
 */
 /**************************************************************************/
-void Adafruit_ST7789::spiWrite(uint8_t b) {
-    HSPI_WRITE(b);
-    return;
+void Adafruit_ST7735::setRotation(uint8_t m) {
+    rotation = m % 4; // can't be higher than 3
+    switch (rotation) {
+        case 0:
+            m = (MADCTL_MX | MADCTL_MY | MADCTL_RGB);
+//			m=0x00;
+            _width  = ST7735_TFTWIDTH;
+            _height = ST7735_TFTHEIGHT;
+			scrollTo(0);
+            break;
+        case 1:
+            m = (MADCTL_MY | MADCTL_MV | MADCTL_RGB);
+//			m=0x60;
+            _width  = ST7735_TFTHEIGHT;
+            _height = ST7735_TFTWIDTH;
+			scrollTo(0);
+            break;
+        case 2:
+            m = (0x00 | MADCTL_RGB);
+//			m=0xC0;
+            _width  = ST7735_TFTWIDTH;
+            _height = ST7735_TFTHEIGHT;
+			scrollTo(0);
+            break;
+        case 3:
+            m = (MADCTL_MX | MADCTL_MV | MADCTL_RGB);
+//			m=0xA0;
+            _width  = ST7735_TFTHEIGHT;
+            _height = ST7735_TFTWIDTH;
+			scrollTo(0);
+            break;
+    }
+
+/*	
+   switch (cwj) {
+      case 0x00:    //！正
+        tft.scrollTo(240);
+        break;
+      case 0x20:    //逆时针 镜像
+        tft.scrollTo(240);
+        break;
+      case 0x40:    //正 镜像
+        tft.scrollTo(240);
+        break;
+      case 0x60:    //！顺时针
+        tft.scrollTo(240);
+        break;
+      case 0x80:    //倒立 镜像
+        tft.scrollTo(0);
+        break;
+      case 0xA0:    //！逆时针
+        tft.scrollTo(0);
+        break;
+      case 0xC0:    //！倒立	
+        tft.scrollTo(0);
+        break;
+      case 0xE0:    //顺时针 镜像
+        tft.scrollTo(0);
+        break;
+    }
+*/
+    startWrite();
+    writeCommand(ST7789_MADCTL);
+    spiWrite(m);
+    endWrite();
 }
