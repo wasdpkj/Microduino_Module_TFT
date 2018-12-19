@@ -61,10 +61,16 @@ static const uint8_t PROGMEM
 										
 	TFT_GAMMASET , 1,					//Gamma curve selected
 	  0x01,								
-	TFT_GMCTRP1 	, 14,				//Set Gamma
-	  0xD0,0x08,0x0E,0x09,0x09,0x05,0x31,0x33,0x48,0x17,0x14,0x15,0x31,0x34,						
+	TFT_GMCTRP1 , 14,					//Set Gamma
+	  0xD0,0x08,0x0E,0x09,
+	  0x09,0x05,0x31,0x33,
+	  0x48,0x17,0x14,0x15,
+	  0x31,0x34,						
 	TFT_GMCTRN1 , 14,					//Set Gamma
-	  0xD0,0x08,0x0E,0x09,0x09,0x15,0x31,0x33,0x48,0x17,0x14,0x15,0x31,0x34,												
+	  0xD0,0x08,0x0E,0x09,
+	  0x09,0x15,0x31,0x33,
+	  0x48,0x17,0x14,0x15,
+	  0x31,0x34,												
     TFT_CASET  , 4,              		//  5: Column addr set, 4 args, no delay:
       0x00,
       ST7789_240x240_XSTART,        	//     XSTART = 0
@@ -569,29 +575,13 @@ void Adafruit_TFT::setRotation(uint8_t m) {
 /*	
    switch (cwj) {
       case 0x00:    //！正
-        tft.scrollTo(240);
-        break;
       case 0x20:    //逆时针 镜像
-        tft.scrollTo(240);
-        break;
       case 0x40:    //正 镜像
-        tft.scrollTo(240);
-        break;
       case 0x60:    //！顺时针
-        tft.scrollTo(240);
-        break;
       case 0x80:    //倒立 镜像
-        tft.scrollTo(0);
-        break;
       case 0xA0:    //！逆时针
-        tft.scrollTo(0);
-        break;
       case 0xC0:    //！倒立	
-        tft.scrollTo(0);
-        break;
       case 0xE0:    //顺时针 镜像
-        tft.scrollTo(0);
-        break;
     }
 */
     startWrite();
